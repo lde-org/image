@@ -28,16 +28,6 @@ local here = directory(debug.getinfo(1, "S").source)
 local libraryName = jit.os == "Windows" and "stb.dll" or "stb.so"
 local libraryPath = here .. libraryName
 
-do
-	local probe = io.open(libraryPath, "rb")
-
-	if probe == nil then
-		error("The stb codec is missing from " .. here .. ". Run `lde install` to build it from build.lua.")
-	end
-
-	probe:close()
-end
-
 ffi.cdef([[
 	const char *image_reason(void);
 

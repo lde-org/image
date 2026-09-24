@@ -2,6 +2,6 @@
 	"name": "image",
 	"description": "Image encoding, decoding and manipulation library",
 	"authors": ["David Cruz <david@bycruz.dev>"],
-	"version": "0.1.1",
+	"version": "0.1.2",
 	"dependencies": {}
 }
