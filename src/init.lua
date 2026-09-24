@@ -11,14 +11,17 @@
 --	assert(photo:save("touched.jpg", { quality = 95 }))
 local Formats = require("image.formats")
 local Image = require("image.image")
+local Stream = require("image.stream")
 
 ---@class image
 ---@field Image image.Image # the class every decoded image is
 ---@field Animation image.Animation # what a multi frame file decodes into
+---@field Stream image.Stream # what a file read a frame at a time is
 local module = {}
 
 module.Image = Image
 module.Animation = Image.Animation
+module.Stream = Stream
 
 --- Reads a file and decodes its first frame.
 ---@type fun(path: string, options: image.DecodeOptions?): image.Image?, string?
@@ -31,6 +34,12 @@ module.decode = Image.decode
 --- Reads a file and decodes every frame of it.
 ---@type fun(path: string, options: image.DecodeOptions?): image.Animation?, string?
 module.loadFrames = Image.loadFrames
+
+--- Opens a file to be read a frame at a time, which is what an animation that is drawn as it is
+--- read wants: the whole of a gif at once costs its frames in time and in memory before the first
+--- of them can be drawn.
+---@type fun(path: string): image.Stream?, string?
+module.stream = Stream.open
 
 --- Decodes every frame of the bytes of an animation, and the one frame of anything
 --- else, as an image.Animation.

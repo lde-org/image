@@ -411,3 +411,158 @@ void image_bytes_free(unsigned char* bytes)
 {
 	free(bytes);
 }
+
+/* ---------------------------------------------------------------------------
+ * A file read a frame at a time
+ *
+ * stb decodes a GIF by walking its blocks, so reading one frame at a time is what
+ * its own loop does internally: this keeps that walk between calls instead of
+ * finishing it, which is the difference between an animation that costs its first
+ * frame and one that costs the whole of it before anything can be drawn. A file
+ * that is not a GIF is one frame, decoded whole on the first call.
+ *
+ * The frames come back as stb's own canvas, which is reused: a caller that wants to
+ * keep one copies it before asking for the next.
+ * ------------------------------------------------------------------------- */
+
+typedef struct image_stream {
+	/* The bytes the caller handed over, which have to outlive the stream. */
+	const unsigned char* data;
+	size_t size;
+	stbi__context context;
+	stbi__gif gif;
+	/* Whether the file is a GIF at all: anything else is one frame and then nothing. */
+	int animated;
+	int done;
+	/* The channels the file held, which stb fills in as it reads the header. */
+	int channels;
+	/* The single frame of a file that is not an animation, and what has to be
+	 * released when the stream is. */
+	unsigned char* single;
+	int width;
+	int height;
+	int delay;
+} image_stream;
+
+void* image_stream_open(const void* data, size_t size)
+{
+	if (!image_request_ok(data, size, 1)) {
+		return NULL;
+	}
+
+	image_stream* stream = (image_stream*)calloc(1, sizeof(image_stream));
+
+	if (stream == NULL) {
+		image_shimReason = "out of memory";
+
+		return NULL;
+	}
+
+	stream->data = (const unsigned char*)data;
+	stream->size = size;
+
+	stbi__start_mem(&stream->context, stream->data, (int)size);
+	stream->animated = stbi__gif_test(&stream->context);
+
+	return stream;
+}
+
+/* The next frame of the file: 1 with a frame, 0 at the end of it, -1 when it could
+ * not be read. `twoBack` is the frame two before this one, which a GIF that
+ * restores what was under a frame needs and may be NULL for the first two. */
+int image_stream_next(void* handle, unsigned char** pixels, int* width, int* height, int* delay,
+	const unsigned char* twoBack)
+{
+	image_stream* stream = (image_stream*)handle;
+
+	if (stream == NULL || stream->done) {
+		return 0;
+	}
+
+	if (!stream->animated) {
+		int channels = 0;
+
+		stream->done = 1;
+		stream->single = stbi_load_from_memory(stream->data, (int)stream->size, &stream->width,
+			&stream->height, &channels, 4);
+
+		if (stream->single == NULL) {
+			return -1;
+		}
+
+		*pixels = stream->single;
+		*width = stream->width;
+		*height = stream->height;
+		*delay = 0;
+
+		return 1;
+	}
+
+	unsigned char* frame = stbi__gif_load_next(&stream->context, &stream->gif, &stream->channels, 4,
+		(stbi_uc*)twoBack);
+
+	/* The trailer, which is how stb says the animation is over rather than broken. */
+	if (frame == (unsigned char*)&stream->context) {
+		stream->done = 1;
+
+		return 0;
+	}
+
+	if (frame == NULL) {
+		stream->done = 1;
+		image_shimReason = NULL;
+
+		return -1;
+	}
+
+	stream->width = stream->gif.w;
+	stream->height = stream->gif.h;
+	stream->delay = stream->gif.delay;
+
+	*pixels = frame;
+	*width = stream->width;
+	*height = stream->height;
+	*delay = stream->delay;
+
+	return 1;
+}
+
+/* Back to the first frame, which is what playing an animation again is. The bytes
+ * are the caller's and are not read again, so this is the walk starting over. */
+void image_stream_rewind(void* handle)
+{
+	image_stream* stream = (image_stream*)handle;
+
+	if (stream == NULL) {
+		return;
+	}
+
+	STBI_FREE(stream->gif.out);
+	STBI_FREE(stream->gif.history);
+	STBI_FREE(stream->gif.background);
+	STBI_FREE(stream->single);
+
+	memset(&stream->gif, 0, sizeof(stream->gif));
+
+	stream->single = NULL;
+	stream->done = 0;
+	stream->channels = 0;
+
+	stbi__start_mem(&stream->context, stream->data, (int)stream->size);
+}
+
+void image_stream_close(void* handle)
+{
+	image_stream* stream = (image_stream*)handle;
+
+	if (stream == NULL) {
+		return;
+	}
+
+	STBI_FREE(stream->gif.out);
+	STBI_FREE(stream->gif.history);
+	STBI_FREE(stream->gif.background);
+	STBI_FREE(stream->single);
+
+	free(stream);
+}

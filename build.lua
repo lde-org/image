@@ -54,6 +54,10 @@ local EXPORTED = {
 	"image_pixels",
 	"image_probe_memory",
 	"image_reason",
+	"image_stream_close",
+	"image_stream_next",
+	"image_stream_open",
+	"image_stream_rewind",
 	"image_width",
 }
 

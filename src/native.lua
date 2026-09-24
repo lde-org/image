@@ -56,11 +56,19 @@ ffi.cdef([[
 
 	int image_encode(const unsigned char *pixels, const image_encode_options *options, unsigned char **out, unsigned long long *size);
 	void image_bytes_free(unsigned char *bytes);
+
+	void *image_stream_open(const unsigned char *data, size_t size);
+	int image_stream_next(void *stream, unsigned char **pixels, int *width, int *height, int *delay, const unsigned char *two_back);
+	void image_stream_rewind(void *stream);
+	void image_stream_close(void *stream);
 ]])
 
 local lib = ffi.load(libraryPath)
 
 ---@alias image.native.Handle ffi.cdata*
+
+--- An open stream, which is what a file being read a frame at a time is held in.
+---@class image.native.Stream: ffi.cdata*
 
 --- The ids stb_image_write knows each format by. src/formats/stb.lua names them
 --- after these, so an encoding format is picked by name and translated here.
@@ -105,6 +113,46 @@ function native.decode(data, desiredChannels)
 
 	---@cast handle image.native.Handle
 	return ffi.gc(handle, lib.image_free)
+end
+
+--- Opens a file to be read a frame at a time. Anything that is not a GIF is one
+--- frame, decoded when it is first asked for.
+---@param data string
+---@return image.native.Stream? stream
+---@return string? err
+function native.streamOpen(data)
+	local handle = lib.image_stream_open(data, #data)
+
+	if handle == nil then
+		return nil, ffi.string(lib.image_reason())
+	end
+
+	---@cast handle image.native.Stream
+	return ffi.gc(handle, lib.image_stream_close)
+end
+
+--- The next frame of a stream: 1 with one, 0 at the end of the file, -1 when it
+--- could not be read. The pixels are the decoder's own canvas, which the next call
+--- writes over.
+---@param handle image.native.Stream
+---@param twoBack ffi.cdata*? # the frame two before this one, for a GIF that restores what was under it
+---@return ffi.cdata*? pixels
+---@return number width
+---@return number height
+---@return number delay # milliseconds to show it for
+---@return integer state
+function native.streamNext(handle, twoBack)
+	local pointer = ffi.new("unsigned char *[1]")
+	local width, height, delay = ffi.new("int[1]"), ffi.new("int[1]"), ffi.new("int[1]")
+
+	local state = lib.image_stream_next(handle, pointer, width, height, delay, twoBack)
+
+	return pointer[0], width[0], height[0], delay[0], state
+end
+
+---@param handle image.native.Stream
+function native.streamRewind(handle)
+	lib.image_stream_rewind(handle)
 end
 
 --- Decodes every frame of an animation, and the single frame of anything else.
