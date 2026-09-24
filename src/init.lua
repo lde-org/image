@@ -47,7 +47,7 @@ module.isValid = Image.isValid
 
 --- The name of the format these bytes are, by their signature alone.
 ---@type fun(data: string): string?
-module.format = Image.format
+module.identify = Image.identify
 
 --- An empty image of a given shape, or one wrapped around pixels the caller owns.
 ---@type fun(width: number, height: number, channels: number?, pixels: ffi.cdata*?): image.Image

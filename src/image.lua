@@ -211,14 +211,18 @@ function Image.isValid(data)
 end
 
 --- The name of the format these bytes are, by their signature alone. A TGA has no
---- signature, so it never comes back from here.
+--- signature, so it never comes back from here, and a format that can only be told
+--- apart by its extension is left to the file it came from.
 ---@param data string
 ---@return string? name
-function Image.format(data)
-	---@type image.Format?
-	local format = Formats.detect(data)
+function Image.identify(data)
+	local detected = Formats.detect(data)
 
-	return format ~= nil and format.name or nil
+	if detected == nil then
+		return nil
+	end
+
+	return detected.name
 end
 
 --- Reads one pixel, at zero based coordinates, as r, g, b, a. A buffer with fewer

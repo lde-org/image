@@ -138,6 +138,12 @@ test.it("reports a netpbm image that does not say enough", function()
 	local noSize, sizeErr = image.decode("P5\n")
 	test.falsy(noSize)
 	test.truthy(sizeErr)
+
+	-- A header claiming sixteen million pixels that the raster cannot begin to
+	-- hold is refused before anything is allocated for them.
+	local huge, hugeErr = image.decode("P6\n4000 4000\n255\n\0\0\0")
+	test.falsy(huge)
+	test.includes(hugeErr, "shorter than the header claims")
 end)
 
 test.it("reads every op a qoi stream is made of", function()

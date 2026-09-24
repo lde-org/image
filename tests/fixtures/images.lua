@@ -432,11 +432,42 @@ function images.fixture(name)
 	return images.read(images.path(name))
 end
 
---- A path in the system temporary directory, for a test that writes a file.
+--- The one directory a test writes its scratch files into.
+---@type string?
+local SCRATCH = nil
+
+--- The system's own temporary directory when there is a usable one, and the
+--- package's tests directory when there is not — which is what a container that
+--- mounts the checkout has to offer.
+---@return string
+local function scratchDirectory()
+	if SCRATCH == nil then
+		for _, candidate in ipairs({ os.getenv("TMPDIR"), os.getenv("TEMP"), "/tmp" }) do
+			if candidate ~= nil then
+				local probe = io.open(candidate .. "/image-tests-probe", "wb")
+
+				if probe ~= nil then
+					probe:close()
+					os.remove(candidate .. "/image-tests-probe")
+
+					SCRATCH = candidate
+					break
+				end
+			end
+		end
+
+		SCRATCH = SCRATCH or "tests"
+	end
+
+	return SCRATCH
+end
+
+--- A path to write a file to and read back, in a directory this platform can
+--- actually write to.
 ---@param name string
 ---@return string
 function images.temp(name)
-	return os.tmpname() .. "-" .. name
+	return scratchDirectory() .. "/image-tests-" .. name
 end
 
 --- Writes bytes to a path, for a test that needs a file to read back.

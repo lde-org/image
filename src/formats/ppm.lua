@@ -154,18 +154,32 @@ function Ppm.decode(data, options)
 
 	local count = header.width * header.height
 	local channels, text, bilevel = layout(header)
-	local buffer = ffi.new("uint8_t[?]", count * channels)
 
 	-- One based, into the file.
 	local position = header.position
 
+	-- A header that claims more pixels than the file could hold is refused before
+	-- anything is allocated for them, rather than after.
+	local needed
+
+	if bilevel and not text then
+		needed = math.floor((header.width + 7) / 8) * header.height
+	elseif text then
+		-- A sample written out as a number takes a byte at the very least.
+		needed = count * channels
+	else
+		needed = count * channels * (header.maxval > 255 and 2 or 1)
+	end
+
+	if position + needed - 1 > #data then
+		return nil, "Damaged netpbm data: the raster is shorter than the header claims"
+	end
+
+	local buffer = ffi.new("uint8_t[?]", count * channels)
+
 	if bilevel and not text then
 		-- Rows of bits, most significant first, each padded to a whole byte.
 		local stride = math.floor((header.width + 7) / 8)
-
-		if position + stride * header.height - 1 > #data then
-			return nil, "Damaged netpbm data: the raster is shorter than the header claims"
-		end
 
 		for y = 0, header.height - 1 do
 			for x = 0, header.width - 1 do
@@ -199,10 +213,6 @@ function Ppm.decode(data, options)
 	else
 		local wide = header.maxval > 255
 		local size = wide and 2 or 1
-
-		if position + count * channels * size - 1 > #data then
-			return nil, "Damaged netpbm data: the raster is shorter than the header claims"
-		end
 
 		for index = 0, count * channels - 1 do
 			local value = string.byte(data, position + index * size)

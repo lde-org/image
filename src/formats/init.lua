@@ -19,7 +19,7 @@ local Ppm = require("image.formats.ppm")
 --- What a codec declares about one format. The registry is what attaches the codec
 --- itself, so a codec does not have to name itself in its own list.
 ---@class image.FormatSpec
----@field name string # what image.format reports, and what encode takes
+---@field name string # what image.identify reports, and what encode takes
 ---@field extensions string[] # what a save goes by when it has no format of its own
 ---@field magic string[]? # the prefixes a file of this format starts with
 ---@field write string? # what the encoder calls it, when it can be written
@@ -64,8 +64,11 @@ Formats.byExtension = {}
 Formats.list = {}
 
 for _, codec in ipairs(codecs) do
-	for _, format in ipairs(codec.formats) do
-		assert(Formats.byName[format.name] == nil, "two codecs claim the " .. format.name .. " format")
+	for _, spec in ipairs(codec.formats) do
+		assert(Formats.byName[spec.name] == nil, "two codecs claim the " .. spec.name .. " format")
+
+		---@cast spec image.Format
+		local format = spec
 
 		format.codec = codec
 		Formats.byName[format.name] = format
