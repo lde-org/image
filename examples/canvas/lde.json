@@ -1,0 +1,9 @@
+{
+	"name": "canvas",
+	"description": "Draws an image by hand and writes it out",
+	"authors": ["David Cruz <david@bycruz.dev>"],
+	"version": "0.1.0",
+	"dependencies": {
+		"image": { "path": "../.." }
+	}
+}

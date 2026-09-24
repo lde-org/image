@@ -1,0 +1,9 @@
+{
+	"name": "convert",
+	"description": "Converts an image between formats",
+	"authors": ["David Cruz <david@bycruz.dev>"],
+	"version": "0.1.0",
+	"dependencies": {
+		"image": { "path": "../.." }
+	}
+}

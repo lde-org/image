@@ -1,0 +1,9 @@
+{
+	"name": "inspect",
+	"description": "Reports what an image file holds",
+	"authors": ["David Cruz <david@bycruz.dev>"],
+	"version": "0.1.0",
+	"dependencies": {
+		"image": { "path": "../.." }
+	}
+}
