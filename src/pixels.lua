@@ -71,6 +71,9 @@ end
 ---@param to number # channels to write
 ---@return ffi.cdata* # uint8_t*, collected by Lua
 function pixels.convert(buffer, count, from, to)
+	assert(to >= 1 and to <= 4, "An image holds between 1 and 4 channels")
+	assert(from >= 1 and from <= 4, "An image holds between 1 and 4 channels")
+
 	if from == to then
 		local copy = ffi.new("uint8_t[?]", count * to)
 		ffi.copy(copy, buffer, count * to)

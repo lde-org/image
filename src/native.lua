@@ -6,12 +6,36 @@
 -- what frees them when an image is dropped without being closed.
 local ffi = require("ffi")
 
-local here = debug.getinfo(1, "S").source:sub(2):match("(.*[/\\])") or ""
+--- The directory a file was loaded from, from the name the runtime knows it by.
+---@param source string
+---@return string
+local function directory(source)
+	-- A source name is prefixed with "@" when it names a file on disk.
+	local path = string.sub(source, 1, 1) == "@" and string.sub(source, 2) or source
+
+	for index = #path, 1, -1 do
+		local byte = string.byte(path, index)
+
+		if byte == 0x2F or byte == 0x5C then -- "/" or "\"
+			return string.sub(path, 1, index)
+		end
+	end
+
+	return ""
+end
+
+local here = directory(debug.getinfo(1, "S").source)
 local libraryName = jit.os == "Windows" and "stb.dll" or "stb.so"
 local libraryPath = here .. libraryName
 
-if io.open(libraryPath, "rb") == nil then
-	error("The stb codec is missing from " .. here .. ". Run `lde install` to build it from build.lua.")
+do
+	local probe = io.open(libraryPath, "rb")
+
+	if probe == nil then
+		error("The stb codec is missing from " .. here .. ". Run `lde install` to build it from build.lua.")
+	end
+
+	probe:close()
 end
 
 ffi.cdef([[
@@ -193,7 +217,7 @@ function native.encode(pixels, options)
 	local size = ffi.new("unsigned long long[1]")
 
 	if lib.image_encode(pixels, settings, out, size) == 0 then
-		return nil, "The encoder refused the pixels"
+		return nil, ffi.string(lib.image_reason())
 	end
 
 	local encoded = ffi.string(out[0], tonumber(size[0]))

@@ -42,6 +42,7 @@ local function token(data, position)
 		if byte == nil then
 			return nil, position
 		elseif byte == 35 then -- "#" comments run to the end of the line
+			-- A plain search, which scans for the byte rather than matching it.
 			local newline = string.find(data, "\n", position, true)
 			position = newline == nil and #data + 1 or newline + 1
 		elseif isSpace(byte) then
@@ -73,7 +74,17 @@ end
 local function readHeader(data)
 	local magic, position = token(data, 1)
 
-	if magic == nil or #magic ~= 2 or string.sub(magic, 1, 1) ~= "P" or tonumber(string.sub(magic, 2)) == nil then
+	-- "P" and a digit from one to six is the whole of a netpbm magic, which is two
+	-- bytes of comparison rather than a pattern.
+	local valid = magic ~= nil and #magic == 2
+
+	if valid then
+		local first, kind = string.byte(magic, 1, 2)
+
+		valid = first == 0x50 and kind ~= nil and kind >= 0x31 and kind <= 0x36
+	end
+
+	if not valid then
 		return nil, "Not a netpbm image: the header does not start with P1 to P6"
 	end
 
@@ -118,11 +129,21 @@ local function readHeader(data)
 	}
 end
 
---- A sample as the eight bit value netpbm's own maximum maps to.
+--- A sample as the eight bit value netpbm's own maximum maps to. A file may spell
+--- out a larger number than its header allows, which is the brightest there is
+--- rather than a wrapped one.
 ---@param value number
 ---@param maxval number
 ---@return number
 local function scale(value, maxval)
+	if value >= maxval then
+		return 255
+	end
+
+	if value <= 0 then
+		return 0
+	end
+
 	if maxval == 255 then
 		return value
 	end

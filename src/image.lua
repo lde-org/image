@@ -16,7 +16,8 @@ local pixels = require("image.pixels")
 ---@field channels number? # 1 to 4, decode into that many channels
 ---@field flip boolean? # turn the image upside down while decoding
 
---- What an encode may be asked for.
+--- What an encode may be asked for. A value outside the range a format takes is
+--- clamped by the encoder rather than refused.
 ---@class image.EncodeOptions
 ---@field format string? # the format to write, when the caller has a say
 ---@field quality number? # JPEG, 1 to 100, ninety by default
@@ -27,7 +28,7 @@ local pixels = require("image.pixels")
 ---@field width number
 ---@field height number
 ---@field channels number # 1 grey, 2 grey and alpha, 3 colour, 4 colour and alpha
----@field fileChannels number # the channels the file held, when it came from one
+---@field fileChannels number? # the channels the file held, when it came from one
 ---@field format image.Format? # what it was decoded from
 ---@field delay number? # milliseconds to show it, for a frame of an animation
 ---@field pixels ffi.cdata* # uint8_t*, width * height * channels bytes
@@ -160,13 +161,18 @@ end
 --- Decodes every frame of an animation, and the one frame of anything else.
 ---@param data string
 ---@param options image.DecodeOptions?
+---@param hint image.Format? # the format to assume when the bytes say nothing
 ---@return image.Animation? animation
 ---@return string? err
-function Image.decodeFrames(data, options)
-	local frames, err = Formats.decodeFrames(data, options)
+function Image.decodeFrames(data, options, hint)
+	local frames, err = Formats.decodeFrames(data, options, hint)
 
 	if frames == nil then
 		return nil, err
+	end
+
+	if #frames == 0 then
+		return nil, "The file decoded to no frames at all"
 	end
 
 	local images = {}
@@ -192,15 +198,17 @@ function Image.loadFrames(path, options)
 		return nil, err
 	end
 
-	return Image.decodeFrames(data, options)
+	return Image.decodeFrames(data, options, Formats.fromPath(path))
 end
 
---- What a file states about itself, without decoding its pixels.
+--- What a file states about itself, without decoding its pixels. The path is only
+--- there to name a format that has no signature of its own, which is TGA.
 ---@param data string
+---@param path string? # the file the bytes came from
 ---@return image.Info? info
 ---@return string? err
-function Image.probe(data)
-	return Formats.probe(data)
+function Image.probe(data, path)
+	return Formats.probe(data, path ~= nil and Formats.fromPath(path) or nil)
 end
 
 --- Whether the bytes look like something this package can decode.
@@ -281,10 +289,8 @@ end
 function Image:convert(channels)
 	assert(channels >= 1 and channels <= 4, "An image holds between 1 and 4 channels")
 
-	local converted = Image.new(self.width, self.height, channels)
-	converted.pixels = pixels.convert(self.pixels, self.width * self.height, self.channels, channels)
-
-	return converted
+	return Image.new(self.width, self.height, channels,
+		pixels.convert(self.pixels, self.width * self.height, self.channels, channels))
 end
 
 --- A copy of this image, pixels and all.
@@ -319,7 +325,7 @@ local function writeFormat(name, path)
 			return byPath
 		end
 
-		local extension = string.match(path, "%.([%w]+)$")
+		local extension = Formats.extension(path)
 
 		if extension ~= nil then
 			return nil, "Unknown image format: ." .. extension
@@ -386,19 +392,20 @@ function Image:save(path, options)
 	return true
 end
 
---- Releases the decoded pixels early, rather than leaving them to the collector.
+--- Releases the decoded pixels early, rather than leaving them to the collector,
+--- and leaves the image empty: a closed image has no pixels to read.
 ---
---- Only the image that decoded them owns them: the frames of an animation share one
---- buffer, and it is the animation that lets it go. Closing it leaves those frames
---- with nothing to point at.
+--- Only the image that decoded them owns them. The frames of an animation share one
+--- buffer, and it is the animation that lets it go, so closing a frame only drops
+--- that frame.
 function Image:close()
 	if self.owned and self.handle ~= nil then
 		native.release(self.handle)
-		self.pixels = nil
 	end
 
 	self.handle = nil
 	self.owned = false
+	self.pixels = nil
 end
 
 --- The images a multi frame file holds, in playback order.

@@ -56,8 +56,17 @@ typedef struct image_encode_options {
 	int rle;
 } image_encode_options;
 
+/* What image_reason reports when this shim turned the call down, rather than stb
+ * failing on the data. Without it, a refusal would be described by whatever the
+ * last decode of an unrelated image happened to fail on. */
+static const char* image_shimReason = NULL;
+
 const char* image_reason(void)
 {
+	if (image_shimReason != NULL) {
+		return image_shimReason;
+	}
+
 	const char* reason = stbi_failure_reason();
 
 	return reason != NULL ? reason : "unknown error";
@@ -72,7 +81,24 @@ static int image_size_ok(size_t size)
 
 static int image_request_ok(const void* data, size_t size, int desiredChannels)
 {
-	return data != NULL && image_size_ok(size) && desiredChannels >= 0 && desiredChannels <= 4;
+	image_shimReason = NULL;
+
+	if (data == NULL || size == 0) {
+		image_shimReason = "the image data is empty";
+		return 0;
+	}
+
+	if (!image_size_ok(size)) {
+		image_shimReason = "the image data is longer than a decoder can be asked for";
+		return 0;
+	}
+
+	if (desiredChannels < 0 || desiredChannels > 4) {
+		image_shimReason = "a decoder takes between 1 and 4 channels, or none to keep the file's own";
+		return 0;
+	}
+
+	return 1;
 }
 
 static void* image_wrap(unsigned char* pixels, int width, int height, int channels, int pixelChannels,
@@ -114,6 +140,13 @@ void* image_decode_memory(const void* data, size_t size, int desiredChannels)
 		return NULL;
 	}
 
+	if (width <= 0 || height <= 0) {
+		stbi_image_free(pixels);
+		image_shimReason = "the image states no size";
+
+		return NULL;
+	}
+
 	return image_wrap(pixels, width, height, channels, desiredChannels > 0 ? desiredChannels : channels, 1, NULL);
 }
 
@@ -148,6 +181,17 @@ void* image_decode_frames_memory(const void* data, size_t size, int desiredChann
 
 	if (pixels == NULL) {
 		free(delays);
+		return NULL;
+	}
+
+	/* A GIF whose header parses but which holds no image at all comes back as a
+	 * zero layer buffer, which is a failed decode rather than an animation of
+	 * nothing. */
+	if (frames <= 0 || width <= 0 || height <= 0) {
+		stbi_image_free(pixels);
+		free(delays);
+		image_shimReason = "the GIF holds no frames";
+
 		return NULL;
 	}
 
@@ -218,7 +262,17 @@ void image_free(void* image)
  */
 int image_probe_memory(const void* data, size_t size, int* width, int* height, int* channels, int* bits)
 {
-	if (data == NULL || !image_size_ok(size)) {
+	image_shimReason = NULL;
+
+	if (data == NULL || size == 0) {
+		image_shimReason = "the image data is empty";
+
+		return 0;
+	}
+
+	if (!image_size_ok(size)) {
+		image_shimReason = "the image data is longer than a decoder can be asked for";
+
 		return 0;
 	}
 
@@ -275,11 +329,23 @@ static void image_buffer_append(void* context, void* data, int size)
  */
 int image_encode(const unsigned char* pixels, const image_encode_options* options, unsigned char** out, unsigned long long* size)
 {
+	image_shimReason = NULL;
+
 	if (pixels == NULL || options == NULL || out == NULL || size == NULL) {
+		image_shimReason = "the encoder was handed no pixels";
+
 		return 0;
 	}
 
-	if (options->width <= 0 || options->height <= 0 || options->channels <= 0 || options->channels > 4) {
+	if (options->width <= 0 || options->height <= 0) {
+		image_shimReason = "the encoder was handed a size of nothing";
+
+		return 0;
+	}
+
+	if (options->channels <= 0 || options->channels > 4) {
+		image_shimReason = "the encoder takes between 1 and 4 channels";
+
 		return 0;
 	}
 
@@ -325,6 +391,13 @@ int image_encode(const unsigned char* pixels, const image_encode_options* option
 
 	if (!written || buffer.failed || buffer.data == NULL) {
 		free(buffer.data);
+
+		if (buffer.failed) {
+			image_shimReason = "the encoder ran out of memory";
+		} else if (image_shimReason == NULL) {
+			image_shimReason = "the encoder refused these pixels, which are the wrong shape or depth for it";
+		}
+
 		return 0;
 	}
 

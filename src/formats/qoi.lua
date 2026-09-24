@@ -16,7 +16,9 @@ Qoi.name = "qoi"
 
 ---@type image.FormatSpec[]
 Qoi.formats = {
-	{ name = "QOI", extensions = { "qoi" }, magic = { "qoif" }, write = "qoi" },
+	-- The header says how many channels the pixels have, and it can only say three
+	-- or four, so a narrower image is refused rather than widened silently.
+	{ name = "QOI", extensions = { "qoi" }, magic = { "qoif" }, write = "qoi", channels = { 3, 4 } },
 }
 
 local HEADER = 14
@@ -50,8 +52,11 @@ local MAX_RUN = 62
 ---@return number? channels
 ---@return string? err
 local function readHeader(data)
-	if #data < HEADER + 8 then
-		return nil, nil, nil, "Not a QOI image: it is too short to hold a header"
+	-- The eight bytes that close a stream are what the format asks for, but a file
+	-- that stops after its last op is still read, so only a header and one op are
+	-- required here.
+	if #data <= HEADER then
+		return nil, nil, nil, "Not a QOI image: it is too short to hold a header and a pixel"
 	end
 
 	if string.sub(data, 1, 4) ~= "qoif" then
@@ -73,8 +78,11 @@ local function readHeader(data)
 	end
 
 	-- Every op spells out at least one pixel, and a run op at most sixty-two, so a
-	-- stream cannot hold more pixels than this however well it compresses.
-	if width * height > MAX_RUN * (#data - HEADER - 8) then
+	-- stream cannot hold more pixels than this however well it compresses. The end
+	-- marker is not ops, but a stream that carries none is still read.
+	local padding = string.sub(data, #data - 7) == END_MARKER and 8 or 0
+
+	if width * height > MAX_RUN * (#data - HEADER - padding) then
 		return nil, nil, nil, "Damaged QOI data: the header claims more pixels than the stream holds"
 	end
 

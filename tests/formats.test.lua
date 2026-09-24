@@ -104,6 +104,52 @@ test.it("scales a netpbm sample by the maximum the header states", function()
 	test.equal(pixel(wide, 1, 0), "255,255,255,255")
 end)
 
+test.it("reads a sample that says more than the maximum allows", function()
+	-- A file may spell out a number larger than its own maximum, which is the
+	-- brightest value there is rather than one wrapped around.
+	local beyond = assert(image.decode("P2\n2 1\n255\n300 128\n"))
+
+	test.equal(pixel(beyond, 0, 0), "255,255,255,255", "a sample past the maximum is white")
+	test.equal(pixel(beyond, 1, 0), "128,128,128,255")
+
+	local scaled = assert(image.decode("P2\n2 1\n15\n99 0\n"))
+
+	test.equal(pixel(scaled, 0, 0), "255,255,255,255")
+	test.equal(pixel(scaled, 1, 0), "0,0,0,255")
+end)
+
+test.it("refuses a header that is not one of the six netpbm formats", function()
+	for _, magic in ipairs({ "P0", "P7", "P9" }) do
+		local img, err = image.decode(magic .. "\n2 1\n255\n\1\2\3\4\5\6")
+
+		test.falsy(img, magic .. " is not a netpbm format")
+		test.truthy(err)
+	end
+
+	-- A PAM file, which shares the P and the idea of one but not the header.
+	local pam, pamErr = image.decode("P7\nWIDTH 2\nHEIGHT 1\nDEPTH 3\nMAXVAL 255\nENDHDR\n\1\2\3\4\5\6")
+	test.falsy(pam)
+	test.truthy(pamErr)
+end)
+
+test.it("reads a bilevel image whose rows do not fill a byte", function()
+	local width, height = 5, 2
+
+	local img = assert(image.decode(fixtures.pnm("P4", width, height, nil, function(x, y)
+		return (x + y) % 2 == 0 and 1 or 0
+	end)))
+
+	for y = 0, height - 1 do
+		for x = 0, width - 1 do
+			-- Each row is padded out to a whole byte, which the padding must not
+			-- turn into pixels.
+			local expected = (x + y) % 2 == 0 and "0,0,0,255" or "255,255,255,255"
+
+			test.equal(pixel(img, x, y), expected, string.format("the pixel at %d,%d", x, y))
+		end
+	end
+end)
+
 test.it("reads a bilevel netpbm image", function()
 	-- Rows of bits, most significant first: 10101010 is black, white and so on.
 	local binary = assert(image.decode(fixtures.pnm("P4", 8, 1, nil, function(x)
@@ -179,6 +225,21 @@ test.it("reads every op a qoi stream is made of", function()
 	test.equal(pixel(opaque, 0, 0), "1,2,3,255")
 end)
 
+test.it("reads a qoi stream that closes without its end marker", function()
+	-- The format asks for a marker, and a stream that stops after its last op is
+	-- still readable: sixty-two pixels can come out of one byte of it.
+	local stream = "qoif" .. fixtures.be32(100) .. fixtures.be32(1) .. "\4\0"
+		.. string.char(0xFF, 7, 200, 9, 10) -- a whole pixel
+		.. string.char(0xC0 + 61) -- sixty-two of it
+		.. string.char(0xC0 + 36) -- and thirty-seven more
+
+	local img = assert(image.decode(stream))
+
+	test.equal(img.width, 100)
+	test.equal(pixel(img, 0, 0), "7,200,9,10")
+	test.equal(pixel(img, 99, 0), "7,200,9,10")
+end)
+
 test.it("reports a qoi stream that does not add up", function()
 	local img, err = image.decode("qoif")
 	test.falsy(img)
@@ -217,6 +278,58 @@ test.it("writes a qoi stream it can read back", function()
 			test.equal(pixel(back, x, y), pixel(source, x, y))
 		end
 	end
+end)
+
+test.it("writes a run op for every sixty-two pixels that repeat", function()
+	-- The op stream is short enough to spell out: a whole pixel, then a run op per
+	-- sixty-two repeats of it. A run op carries its length less one.
+	local header = "qoif" .. fixtures.be32(0) .. fixtures.be32(0) .. "\4\0"
+
+	---@param count number
+	---@return string
+	local function expected(count)
+		local ops = string.char(0xFF, 7, 200, 9, 10)
+
+		local repeats = count - 1
+		while repeats > 0 do
+			local run = math.min(repeats, 62)
+			ops = ops .. string.char(0xC0 + run - 1)
+			repeats = repeats - run
+		end
+
+		return string.sub(header, 1, 4)
+			.. fixtures.be32(count) .. fixtures.be32(1)
+			.. "\4\0" .. ops .. "\0\0\0\0\0\0\0\1"
+	end
+
+	for _, count in ipairs({ 1, 62, 63, 125 }) do
+		local img = image.new(count, 1, 4)
+		img:fill(7, 200, 9, 10)
+
+		local encoded = assert(img:encode("qoi"))
+
+		test.equal(encoded, expected(count), count .. " pixels of one colour")
+		test.equal(pixel(assert(image.decode(encoded)), count - 1, 0), "7,200,9,10")
+	end
+end)
+
+test.it("refuses to write the channel counts qoi cannot describe", function()
+	local grey = image.new(2, 1, 1)
+	grey:setPixel(0, 0, 90, 90, 90, 255)
+	grey:setPixel(1, 0, 200, 200, 200, 255)
+
+	local encoded, err = grey:encode("qoi")
+
+	test.falsy(encoded)
+	test.includes(err, "A QOI holds 3 or 4 channel pixels")
+
+	-- Widened, it is a stream like any other.
+	local widened = assert(grey:convert(3):encode("qoi"))
+	local back = assert(image.decode(widened))
+
+	test.equal(back.channels, 3)
+	test.equal(pixel(back, 0, 0), "90,90,90,255")
+	test.equal(pixel(back, 1, 0), "200,200,200,255", "the second pixel is not the first one's tail")
 end)
 
 test.it("compresses a qoi stream that repeats itself", function()

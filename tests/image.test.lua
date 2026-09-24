@@ -223,6 +223,18 @@ test.it("probes a file without decoding its pixels", function()
 	test.truthy(err)
 end)
 
+test.it("probes a format that has no signature, when the path says which it is", function()
+	local tga = fixtures.tga(WIDTH, HEIGHT, 4, fixtures.pattern)
+
+	local unnamed = assert(image.probe(tga))
+	test.equal(unnamed.format, nil, "the bytes alone cannot say which format this is")
+
+	local info = assert(image.probe(tga, "picture.tga"))
+	test.equal(info.format.name, "TGA")
+	test.equal(info.width, WIDTH)
+	test.equal(info.channels, 4)
+end)
+
 test.it("identifies the format from the signature alone", function()
 	test.equal(image.identify(fixtures.png(WIDTH, HEIGHT, 4, fixtures.pattern)), "PNG")
 	test.equal(image.identify(fixtures.fixture("photo.jpg")), "JPEG")
@@ -240,6 +252,21 @@ test.it("knows what it can decode, even without a signature", function()
 	test.truthy(image.isValid(fixtures.qoi(WIDTH, HEIGHT, 4, fixtures.pattern)))
 	test.truthy(image.isValid(fixtures.fixture("photo.jpg")))
 	test.falsy(image.isValid("this is not an image"))
+end)
+
+test.it("names the format of a file it read, even without a signature", function()
+	local path = fixtures.temp("hinted.tga")
+	fixtures.write(path, fixtures.tga(WIDTH, HEIGHT, 4, fixtures.pattern))
+
+	local loaded = assert(image.load(path))
+	test.equal(loaded.format.name, "TGA")
+
+	local animation = assert(image.loadFrames(path))
+	test.equal(#animation.frames, 1)
+	test.equal(animation.format.name, "TGA", "the frames are of the file's format too")
+	test.equal(pixel(animation.frames[1], 0, 0), "255,0,0,255")
+
+	os.remove(path)
 end)
 
 test.it("saves and loads a file, in the format its extension names", function()
@@ -351,19 +378,49 @@ test.it("refuses what it cannot write", function()
 	test.includes(bmpErr, "channel")
 end)
 
-test.it("releases decoded pixels when asked, and leaves its own to the collector", function()
+test.it("releases the pixels of an image it decoded, and empties it", function()
 	local decoded = assert(image.decode(fixtures.png(WIDTH, HEIGHT, 4, fixtures.pattern)))
 
+	test.truthy(decoded.handle ~= nil, "a decoded image holds the handle its pixels live in")
+	test.truthy(decoded.pixels ~= nil)
+
 	decoded:close()
-	test.equal(decoded.pixels, nil, "the decoded pixels are gone")
 
+	test.equal(decoded.handle, nil, "the handle is what released them")
+	test.equal(decoded.pixels, nil, "and a closed image has nothing to read")
+
+	-- Closing twice must not free twice.
+	decoded:close()
+	test.equal(decoded.handle, nil)
+
+	collectgarbage()
+	collectgarbage()
+end)
+
+test.it("lets go of an image it owns without taking a shared buffer with it", function()
 	local built = image.new(WIDTH, HEIGHT, 4)
-	built:close()
-	test.truthy(built.pixels ~= nil, "a buffer Lua allocated is not the decoder's to free")
 
-	-- Whatever the collector does with the rest, the finalizer is what frees it.
-	collectgarbage()
-	collectgarbage()
+	test.equal(built.handle, nil, "an image made here owns no native handle")
+
+	built:close()
+	test.equal(built.pixels, nil, "closing leaves it empty too")
+
+	-- The frames of an animation share one buffer, and it is the animation that
+	-- lets it go: closing one frame must leave the others readable.
+	local animation = assert(image.decodeFrames(fixtures.fixture("animation.gif")))
+	local frame = animation.frames[1]
+
+	frame:close()
+
+	test.equal(frame.pixels, nil, "the frame that was closed is empty")
+	test.truthy(animation.frames[2].pixels ~= nil, "the frames that were not still have theirs")
+	test.equal(pixel(animation.frames[2], 2, 2), "0,255,0,255", "and still read what they held")
+
+	animation:close()
+
+	for _, remaining in ipairs(animation.frames) do
+		test.equal(remaining.pixels, nil, "closing the animation empties every frame")
+	end
 end)
 
 test.it("lists the formats it knows, and which of them it can write", function()

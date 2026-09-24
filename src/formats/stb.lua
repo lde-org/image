@@ -63,6 +63,11 @@ function Stb.decodeFrames(data, options)
 	end
 
 	local decoded = native.describe(handle)
+
+	if decoded.frames < 1 or decoded.width <= 0 or decoded.height <= 0 then
+		return nil, "The file decoded to no frames at all"
+	end
+
 	local stride = decoded.width * decoded.height * decoded.pixelChannels
 	local animated = decoded.frames > 1
 

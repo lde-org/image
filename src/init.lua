@@ -37,8 +37,9 @@ module.loadFrames = Image.loadFrames
 ---@type fun(data: string, options: image.DecodeOptions?): image.Animation?, string?
 module.decodeFrames = Image.decodeFrames
 
---- What an image states about itself, without decoding its pixels.
----@type fun(data: string): image.Info?, string?
+--- What an image states about itself, without decoding its pixels. The path is
+--- only there to name a format that has no signature of its own.
+---@type fun(data: string, path: string?): image.Info?, string?
 module.probe = Image.probe
 
 --- Whether some bytes look like an image this package can decode.

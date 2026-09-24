@@ -39,9 +39,9 @@ The format to write comes from the extension, or from a name given to `encode`:
 local bytes = assert(photo:encode("qoi"))
 ```
 
-`load` and `loadFrames` take a path; `decode`, `decodeFrames` and `probe` take the
-bytes of a file. `probe` reads a header without decoding any pixels, which is what a
-caller wants before it commits to the whole image:
+`load` and `loadFrames` take a path; `decode`, `decodeFrames`, `probe`, `identify`
+and `isValid` take the bytes of a file. `probe` reads a header without decoding any
+pixels, which is what a caller wants before it commits to the whole image:
 
 ```lua
 local file = assert(io.open("photo.png", "rb"))
@@ -56,6 +56,20 @@ if info.width * info.height < 4096 * 4096 then
 end
 ```
 
+`info.format` is `nil` for a format with no signature to go by, which is TGA: pass
+the path `probe` should take the format from, `image.probe(bytes, "photo.tga")`.
+`image.identify(bytes)` answers the same question with the format's name alone, and
+`image.isValid(bytes)` with whether anything here can decode them at all.
+
+`image.formats()` lists every format by name and whether it can be written as well as
+read:
+
+```lua
+for name, writable in pairs(image.formats()) do
+	print(name, writable and "read and write" or "read only")
+end
+```
+
 An image is a shape and an ffi buffer, so the pixels go anywhere an
 `unsigned char *` can:
 
@@ -65,6 +79,7 @@ canvas:fill(0, 0, 0, 255)
 
 canvas:flip()      -- for a texture that is read bottom row first
 canvas:convert(3)  -- a copy, without the alpha
+canvas:close()     -- releases the pixels early, and leaves the image empty
 canvas.pixels      -- uint8_t*, width * height * channels bytes
 ```
 

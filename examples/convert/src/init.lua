@@ -13,34 +13,41 @@ if input == nil or output == nil then
 	return
 end
 
-local file = io.open(input, "rb")
+---@param path string
+---@return string bytes
+local function read(path)
+	local file = io.open(path, "rb")
 
-if file == nil then
-	error("cannot open " .. input)
+	if file == nil then
+		error("cannot open " .. path)
+	end
+
+	local bytes = file:read("*a")
+	file:close()
+
+	return bytes
 end
 
-local bytes = file:read("*a")
-file:close()
+local bytes = read(input)
 
--- What the file says about itself, before any of its pixels are decoded.
-local info = assert(image.probe(bytes), "not an image this can read")
+-- What the file says about itself, before any of its pixels are decoded. The path
+-- is passed along so that a format with no signature can be named by its file.
+local info = assert(image.probe(bytes, input), "not an image this can read")
+local name = info.format ~= nil and info.format.name or "an image with no signature"
 
-print(string.format("%s: %s, %dx%d, %d channels", input, info.format.name, info.width, info.height,
-	info.channels))
+print(string.format("%s: %s, %dx%d, %d channels", input, name, info.width, info.height, info.channels))
 
-local img = assert(image.decode(bytes))
-
--- The format comes from the extension, from either side of the call, so saving is
--- the whole of the conversion. Quality is the one thing worth naming, and only a
+-- The format comes from the extension of the file the image is going to, so saving
+-- is the whole of the conversion. Quality is the one thing worth naming, and only a
 -- jpeg has it.
-local format = assert(string.match(output, "%.([%w]+)$"), "the output needs an extension")
-local options = (format == "jpg" or format == "jpeg") and { quality = 95 } or nil
-
-local encoded = assert(img:encode(format, options))
-local written, err = img:save(output, options)
+local written, err = assert(image.decode(bytes)):save(output, { quality = 95 })
 
 if written == nil then
 	error(err)
 end
 
-print(string.format("%s: %d bytes, written as %s", output, #encoded, format))
+-- Reading it back is what says what was written, and how large it came out.
+local produced = read(output)
+local saved = assert(image.probe(produced, output))
+
+print(string.format("%s: %s, %d bytes", output, saved.format.name, #produced))

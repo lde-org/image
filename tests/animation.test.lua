@@ -78,6 +78,20 @@ test.it("hands out frames that are images like any other", function()
 	test.equal(pixel(back, 3, 3), "0,255,0,255")
 end)
 
+test.it("reports a gif that holds no frames at all", function()
+	-- A header with a global colour table and nothing after it: the trailer closes
+	-- a file with no image data in it.
+	local empty = "GIF89a" .. string.char(4, 0, 4, 0, 0xF0, 0, 0) .. "\59"
+
+	local animation, err = image.decodeFrames(empty, { channels = 3 })
+	test.falsy(animation, "an empty animation is not an animation")
+	test.truthy(err)
+
+	local animation2, err2 = image.decodeFrames(empty)
+	test.falsy(animation2)
+	test.truthy(err2)
+end)
+
 test.it("releases the buffer of an animation and leaves its frames empty", function()
 	local animation = assert(image.loadFrames(fixtures.path("animation.gif")))
 

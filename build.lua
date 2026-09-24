@@ -23,7 +23,7 @@ local isMac = jit.os == "OSX"
 -- Windows has two toolchains in the wild: mingw, whose linker is GNU ld, and the
 -- clang that targets MSVC, which hands its arguments to lld-link or link.exe and
 -- rejects both -fPIC and the GNU linker options.
-local isMsvc = build.target:find("msvc") ~= nil
+local isMsvc = build.target:find("msvc", 1, true) ~= nil
 local libraryName = isWindows and "stb.dll" or "stb.so"
 
 ---@class image.Vendored

@@ -101,17 +101,63 @@ function Formats.detect(data)
 	return nil
 end
 
+--- The extension of a path: what follows its last dot, in lower case.
+---
+--- Walked backwards one byte at a time rather than matched, which keeps the two
+--- stops that matter — the last dot, and the separator that ends the file name —
+--- from costing a pattern and a capture on a path that is looked at on every load
+--- and every save.
+---@param path string
+---@return string? extension
+function Formats.extension(path)
+	local dot = nil
+
+	for index = #path, 1, -1 do
+		local byte = string.byte(path, index)
+
+		if byte == 0x2E then -- "."
+			dot = index
+			break
+		end
+
+		if byte == 0x2F or byte == 0x5C then -- "/" or "", which ends the name
+			break
+		end
+	end
+
+	-- A dot at the very end names nothing, and a name that is only a dot is a
+	-- hidden file rather than one with an extension.
+	if dot == nil or dot == #path or dot == 1 then
+		return nil
+	end
+
+	return string.lower(string.sub(path, dot + 1))
+end
+
 --- The format a file name suggests, taken from the extension.
 ---@param path string
 ---@return image.Format? format
 function Formats.fromPath(path)
-	local extension = string.match(path, "%.([%w]+)$")
+	local extension = Formats.extension(path)
 
 	if extension == nil then
 		return nil
 	end
 
-	return Formats.byExtension[string.lower(extension)]
+	return Formats.byExtension[extension]
+end
+
+--- Refuses a decode that was asked for a channel count no image can have.
+---@param options image.DecodeOptions?
+---@return string? err
+local function checkOptions(options)
+	local channels = options ~= nil and options.channels or nil
+
+	if channels ~= nil and (channels < 1 or channels > 4) then
+		return string.format("An image holds between 1 and 4 channels, and %s were asked for", tostring(channels))
+	end
+
+	return nil
 end
 
 --- The codec and format to read some bytes with.
@@ -134,6 +180,12 @@ end
 ---@return image.Decoded? decoded
 ---@return string? err
 function Formats.decode(data, options, hint)
+	local invalid = checkOptions(options)
+
+	if invalid ~= nil then
+		return nil, invalid
+	end
+
 	local format, codec = pick(data, hint)
 	local decoded, err = codec.decode(data, options)
 
@@ -154,6 +206,12 @@ end
 ---@return image.Decoded[]? frames
 ---@return string? err
 function Formats.decodeFrames(data, options, hint)
+	local invalid = checkOptions(options)
+
+	if invalid ~= nil then
+		return nil, invalid
+	end
+
 	local format, codec = pick(data, hint)
 
 	if codec.decodeFrames == nil then
@@ -218,6 +276,10 @@ end
 ---@return string? encoded
 ---@return string? err
 function Formats.encode(pixels, width, height, channels, format, options)
+	if pixels == nil then
+		return nil, "The image has no pixels: it was closed, or never decoded"
+	end
+
 	if format.write == nil then
 		local writable = {}
 
