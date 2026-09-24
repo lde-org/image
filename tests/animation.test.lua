@@ -52,6 +52,82 @@ test.it("decodes the one frame of a still as an animation of one", function()
 	test.equal(qoi.format.name, "QOI")
 end)
 
+-- ─── Reading a frame at a time ────────────────────────────────────────────────
+
+test.it("reads a gif a frame at a time, with the time each one is shown for", function()
+	local stream = assert(image.stream(fixtures.path("animation.gif")))
+
+	test.equal(stream.path, fixtures.path("animation.gif"))
+
+	local first = assert(stream:next())
+
+	test.equal(first.width, 4, "a frame is the file's size")
+	test.equal(first.height, 4)
+	test.equal(first.channels, 4, "and is a picture like any other")
+	test.equal(pixel(first, 2, 2), "255,0,0,255", "the first frame of the file is red")
+	test.equal(first.delay, 100, "and is shown for a tenth of a second")
+
+	local second = assert(stream:next())
+	test.equal(pixel(second, 2, 2), "0,255,0,255", "the second is green")
+	test.equal(second.delay, 100)
+
+	local third = assert(stream:next())
+	test.equal(pixel(third, 2, 2), "0,0,255,255", "the third is blue")
+	test.equal(third.delay, 200)
+
+	test.equal(stream:next(), nil, "and then the file has no more frames")
+end)
+
+test.it("reads the same frames the whole animation would", function()
+	local animation = assert(image.loadFrames(fixtures.path("animation.gif")))
+	local stream = assert(image.stream(fixtures.path("animation.gif")))
+
+	for index, frame in ipairs(animation.frames) do
+		local read = assert(stream:next())
+
+		test.equal(pixel(read, 2, 2), pixel(frame, 2, 2), "frame " .. index .. " is the same picture")
+		test.equal(read.delay, frame.delay, "and is shown for the same time")
+	end
+
+	test.equal(stream:next(), nil)
+end)
+
+test.it("goes back to the first frame when it is asked to", function()
+	local stream = assert(image.stream(fixtures.path("animation.gif")))
+
+	assert(stream:next())
+	assert(stream:next())
+
+	stream:rewind()
+
+	test.equal(pixel(assert(stream:next()), 2, 2), "255,0,0,255", "which is the one it started with")
+end)
+
+test.it("reads the one frame of a still, and a stream that is done stays done", function()
+	local still = assert(image.stream(fixtures.path("still.gif")))
+	local frame = assert(still:next())
+
+	test.equal(pixel(frame, 2, 2), "255,128,0,255")
+	test.equal(still:next(), nil, "a still is one frame and no more")
+
+	-- A file that is not an animation is a frame at a time all the same: one of them.
+	local photo = assert(image.stream(fixtures.path("photo.jpg")))
+	local picture = assert(photo:next())
+
+	test.equal(picture.width, 64, "the size of the file")
+	test.equal(photo:next(), nil, "and nothing after it")
+
+	photo:rewind()
+	test.truthy(photo:next() ~= nil, "and a stream that was rewound reads it again")
+end)
+
+test.it("refuses a file it cannot read, and one that is not there", function()
+	local missing, err = image.stream("tests/fixtures/nothing.gif")
+
+	test.equal(missing, nil)
+	test.truthy(err ~= nil and err:find("nothing.gif", 1, true) ~= nil, "the message names the file")
+end)
+
 test.it("decodes the first frame only, when that is all that was asked for", function()
 	local first = assert(image.load(fixtures.path("animation.gif")))
 
