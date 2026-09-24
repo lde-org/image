@@ -101,6 +101,27 @@ end
 animation:close() -- every frame points into one buffer, which this releases
 ```
 
+`stream` reads the same animation a frame at a time, which is what a caller that draws frames as
+it gets them wants: the whole of a gif at once costs its frames in time and in memory before the
+first of them can be drawn, where a stream costs one frame.
+
+```lua
+local stream = assert(image.stream("dance.gif"))
+
+while true do
+	local frame = stream:next() -- the decoder's canvas, copied: a frame of the caller's own
+	if frame == nil then break end
+
+	print(frame.delay, frame:getPixel(0, 0))
+end
+
+stream:rewind() -- back to the first frame, which is what playing it again is
+stream:close()
+```
+
+A frame that fails to read raises with the decoder's reason; the end of the file is `nil`.
+A file that is not an animation is one frame, and nothing after it.
+
 ## Examples
 
 | Example                       | What it does                                           |
