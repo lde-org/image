@@ -7,7 +7,6 @@ local fixtures = require("tests.fixtures.images")
 ---@param img image.Image
 ---@param x number
 ---@param y number
----@return string
 local function pixel(img, x, y)
 	local r, g, b, a = img:getPixel(x, y)
 
@@ -17,7 +16,7 @@ end
 test.it("decodes every frame of a gif, with the time each one is shown for", function()
 	local animation = assert(image.loadFrames(fixtures.path("animation.gif")))
 
-	test.equal(animation.format.name, "GIF")
+	test.equal(assert(animation.format).name, "GIF")
 	test.equal(animation.width, 4)
 	test.equal(animation.height, 4)
 	test.equal(#animation.frames, 3, "three frames")
@@ -44,12 +43,12 @@ test.it("decodes the one frame of a still as an animation of one", function()
 	local png = assert(image.decodeFrames(fixtures.png(2, 2, 4, fixtures.pattern)))
 
 	test.equal(#png.frames, 1, "so does a format that never had more than one")
-	test.equal(png.format.name, "PNG")
+	test.equal(assert(png.format).name, "PNG")
 	test.equal(pixel(png.frames[1], 0, 0), "255,0,0,255")
 
 	local qoi = assert(image.decodeFrames(fixtures.qoi(2, 2, 4, fixtures.pattern)))
 	test.equal(#qoi.frames, 1, "a codec in Lua answers this too")
-	test.equal(qoi.format.name, "QOI")
+	test.equal(assert(qoi.format).name, "QOI")
 end)
 
 -- ─── Reading a frame at a time ────────────────────────────────────────────────
@@ -133,7 +132,7 @@ test.it("decodes the first frame only, when that is all that was asked for", fun
 
 	test.equal(pixel(first, 2, 2), "255,0,0,255")
 	test.equal(first.delay, nil, "a whole animation is not one frame's delay")
-	test.equal(first.format.name, "GIF")
+	test.equal(assert(first.format).name, "GIF")
 end)
 
 test.it("hands out frames that are images like any other", function()

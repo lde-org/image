@@ -13,7 +13,6 @@ local pixels = {}
 ---@param r number
 ---@param g number
 ---@param b number
----@return number
 local function luminance(r, g, b)
 	return math.floor((r * 77 + g * 150 + b * 29) / 256)
 end

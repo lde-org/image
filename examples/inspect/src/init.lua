@@ -4,6 +4,7 @@
 --	ldx inspect --git https://github.com/bycruz/image -- photo.png animation.gif
 local image = require("image")
 
+---@type string[]
 local paths = arg or {}
 
 if #paths == 0 then
@@ -20,7 +21,7 @@ for _, path in ipairs(paths) do
 	if file == nil then
 		print(string.format("%s: cannot be opened", path))
 	else
-		local bytes = file:read("*a")
+		local bytes = assert(file:read("*a"))
 		file:close()
 
 		-- The header alone is enough for the shape, which is what a caller wants

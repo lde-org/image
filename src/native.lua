@@ -8,7 +8,6 @@ local ffi = require("ffi")
 
 --- The directory a file was loaded from, from the name the runtime knows it by.
 ---@param source string
----@return string
 local function directory(source)
 	-- A source name is prefixed with "@" when it names a file on disk.
 	local path = string.sub(source, 1, 1) == "@" and string.sub(source, 2) or source
@@ -99,6 +98,13 @@ local native = {}
 
 native.writeFormats = writeFormats
 
+--- The decoder's own message for why the last call failed: a buffer too short, a format it
+--- does not know, or a file that stopped in the middle of itself.
+---@return string
+function native.reason()
+	return ffi.string(lib.image_reason())
+end
+
 --- Decodes an image from memory: the first frame only, when it is an animation.
 ---@param data string
 ---@param desiredChannels integer? # 1 to 4, or nil to keep the file's own
@@ -127,8 +133,10 @@ function native.streamOpen(data)
 		return nil, ffi.string(lib.image_reason())
 	end
 
-	---@cast handle image.native.Stream
-	return ffi.gc(handle, lib.image_stream_close)
+	local stream = ffi.gc(handle, lib.image_stream_close)
+
+	---@cast stream image.native.Stream
+	return stream
 end
 
 --- The next frame of a stream: 1 with one, 0 at the end of the file, -1 when it

@@ -51,42 +51,52 @@ local Ppm = require("image.formats.ppm")
 ---@type image.Codec[]
 local codecs = { Qoi, Ppm, Stb }
 
+---@class image.FormatsRegistry
+---@field byName table<string, image.Format>
+---@field byExtension table<string, image.Format>
+---@field list image.Format[]
 local Formats = {}
 
---- Every format there is, by name, and by the extension a file would carry.
+--- Every format there is, by name, and by the extension a file would carry. The registry is
+--- built in locals and published once, so a write while it is filled is not a promise about what a
+--- field holds when a reader asks.
 ---@type table<string, image.Format>
-Formats.byName = {}
+local byName = {}
 
 ---@type table<string, image.Format>
-Formats.byExtension = {}
+local byExtension = {}
 
 ---@type image.Format[]
-Formats.list = {}
+local list = {}
 
 for _, codec in ipairs(codecs) do
 	for _, spec in ipairs(codec.formats) do
-		assert(Formats.byName[spec.name] == nil, "two codecs claim the " .. spec.name .. " format")
+		assert(byName[spec.name] == nil, "two codecs claim the " .. spec.name .. " format")
 
 		---@cast spec image.Format
 		local format = spec
 
 		format.codec = codec
-		Formats.byName[format.name] = format
-		Formats.list[#Formats.list + 1] = format
+		byName[format.name] = format
+		list[#list + 1] = format
 
 		for _, extension in ipairs(format.extensions) do
-			assert(Formats.byExtension[extension] == nil, "two formats claim the ." .. extension .. " extension")
-			Formats.byExtension[extension] = format
+			assert(byExtension[extension] == nil, "two formats claim the ." .. extension .. " extension")
+			byExtension[extension] = format
 		end
 	end
 end
+
+Formats.byName = byName
+Formats.byExtension = byExtension
+Formats.list = list
 
 --- What a file of these bytes is, by its header alone. Formats without a signature,
 --- which is what TGA is, never come back from here.
 ---@param data string
 ---@return image.Format? format
 function Formats.detect(data)
-	for _, format in ipairs(Formats.list) do
+	for _, format in ipairs(list) do
 		local magic = format.magic
 
 		if magic ~= nil then
@@ -149,7 +159,6 @@ end
 
 --- Refuses a decode that was asked for a channel count no image can have.
 ---@param options image.DecodeOptions?
----@return string? err
 local function checkOptions(options)
 	local channels = options ~= nil and options.channels or nil
 
@@ -170,7 +179,11 @@ local function pick(data, hint)
 
 	-- Nothing recognized the header, and stb is still worth a try: it holds a
 	-- heuristic for TGA, which has no signature to go by.
-	return format, format ~= nil and format.codec or Stb
+	if format ~= nil then
+		return format, format.codec
+	end
+
+	return nil, Stb
 end
 
 --- Decodes the first frame of an image.
@@ -187,6 +200,7 @@ function Formats.decode(data, options, hint)
 	end
 
 	local format, codec = pick(data, hint)
+	---@cast codec image.Codec
 	local decoded, err = codec.decode(data, options)
 
 	if decoded == nil then
@@ -213,6 +227,7 @@ function Formats.decodeFrames(data, options, hint)
 	end
 
 	local format, codec = pick(data, hint)
+	---@cast codec image.Codec
 
 	if codec.decodeFrames == nil then
 		-- A still is an animation of one frame, from the caller's side.
@@ -224,10 +239,15 @@ function Formats.decodeFrames(data, options, hint)
 
 		decoded.format = format
 
-		return { decoded }
+		---@type image.Decoded[]
+		local one = { decoded }
+		return one
 	end
 
-	local frames, err = codec.decodeFrames(data, options)
+	local decodeFrames = codec.decodeFrames
+	---@cast decodeFrames -nil
+	---@type image.Decoded[]?, string?
+	local frames, err = decodeFrames(data, options)
 
 	if frames == nil then
 		return nil, err
@@ -249,10 +269,13 @@ end
 ---@return string? err
 function Formats.probe(data, hint)
 	local format, codec = pick(data, hint)
+	---@cast codec image.Codec
+	---@type image.Info?, string?
 	local info, err
 
-	if codec.probe ~= nil then
-		info, err = codec.probe(data)
+	local probe = codec.probe
+	if probe ~= nil then
+		info, err = probe(data)
 	else
 		info, err = Stb.probe(data)
 	end
@@ -283,7 +306,7 @@ function Formats.encode(pixels, width, height, channels, format, options)
 	if format.write == nil then
 		local writable = {}
 
-		for _, candidate in ipairs(Formats.list) do
+		for _, candidate in ipairs(list) do
 			if candidate.write ~= nil then
 				writable[#writable + 1] = string.lower(candidate.name)
 			end
@@ -292,16 +315,17 @@ function Formats.encode(pixels, width, height, channels, format, options)
 		return nil, format.name .. " cannot be written. This package writes " .. table.concat(writable, ", ") .. "."
 	end
 
-	if format.channels ~= nil then
+	local accepted = format.channels
+	if accepted ~= nil then
 		local allowed = false
 
-		for _, count in ipairs(format.channels) do
+		for _, count in ipairs(accepted) do
 			allowed = allowed or count == channels
 		end
 
 		if not allowed then
 			local counts = {}
-			for _, count in ipairs(format.channels) do
+			for _, count in ipairs(accepted) do
 				counts[#counts + 1] = tostring(count)
 			end
 
@@ -311,7 +335,13 @@ function Formats.encode(pixels, width, height, channels, format, options)
 		end
 	end
 
-	return format.codec.encode(pixels, width, height, channels, format, options)
+	local encode = format.codec.encode
+	if encode == nil then
+		return nil, format.name .. " cannot be written by its codec"
+	end
+	---@cast encode -nil
+
+	return encode(pixels, width, height, channels, format, options)
 end
 
 return Formats

@@ -14,7 +14,6 @@ if input == nil or output == nil then
 end
 
 ---@param path string
----@return string bytes
 local function read(path)
 	local file = io.open(path, "rb")
 
@@ -33,7 +32,7 @@ local bytes = read(input)
 -- What the file says about itself, before any of its pixels are decoded. The path
 -- is passed along so that a format with no signature can be named by its file.
 local info = assert(image.probe(bytes, input), "not an image this can read")
-local name = info.format ~= nil and info.format.name or "an image with no signature"
+local name = info.format ~= nil and assert(info.format).name or "an image with no signature"
 
 print(string.format("%s: %s, %dx%d, %d channels", input, name, info.width, info.height, info.channels))
 
@@ -50,4 +49,4 @@ end
 local produced = read(output)
 local saved = assert(image.probe(produced, output))
 
-print(string.format("%s: %s, %d bytes", output, saved.format.name, #produced))
+print(string.format("%s: %s, %d bytes", output, assert(saved.format).name, #produced))

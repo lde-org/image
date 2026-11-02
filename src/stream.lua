@@ -27,6 +27,10 @@ local native = require("image.native")
 ---@field width number # Of the frame read last, which is the size of all of them
 ---@field height number
 ---@field frame image.Image? # And the frame itself
+---@field handle image.native.Stream? # the decoder's stream, until it is closed
+---@field data string? # the file's bytes, which the stream walks
+---@field before image.Image? # the frame two back, which a GIF may restore under the next
+---@field last image.Image? # the previous frame
 local Stream = {}
 Stream.__index = Stream
 
@@ -58,7 +62,7 @@ function Stream.new(path, data)
 		return nil, err
 	end
 
-	return setmetatable({
+	local stream = setmetatable({
 		path = path,
 		handle = handle,
 		data = data,
@@ -69,6 +73,9 @@ function Stream.new(path, data)
 		height = 0,
 		frame = nil,
 	}, Stream)
+
+	---@cast stream image.Stream
+	return stream
 end
 
 --- Opens a file to be read a frame at a time.
@@ -92,12 +99,13 @@ end
 --- is not a caller's to handle frame by frame.
 ---@return image.Image? frame
 function Stream:next()
-	if self.handle == nil then
+	local handle = self.handle
+	if handle == nil then
 		return nil
 	end
 
 	local twoBack = self.before and self.before.pixels or nil
-	local pointer, width, height, delay, state = native.streamNext(self.handle, twoBack)
+	local pointer, width, height, delay, state = native.streamNext(handle, twoBack)
 
 	if state == 0 then
 		return nil
@@ -109,6 +117,10 @@ function Stream:next()
 
 	-- The decoder's canvas is reused by the next frame, so this one is copied out of it: a frame
 	-- a caller keeps has to be its own.
+	if pointer == nil then
+		error("Failed to read " .. self.path .. ": the decoder returned no pixels")
+	end
+
 	local pixels = ffi.new("uint8_t[?]", width * height * 4)
 
 	ffi.copy(pixels, pointer, width * height * 4)

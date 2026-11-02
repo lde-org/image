@@ -59,13 +59,11 @@ function images.grey(value)
 end
 
 ---@param value number
----@return string
 local function le16(value)
 	return string.char(value % 256, bit.band(bit.rshift(value, 8), 0xFF))
 end
 
 ---@param value number
----@return string
 local function le32(value)
 	return string.char(value % 256, bit.band(bit.rshift(value, 8), 0xFF),
 		bit.band(bit.rshift(value, 16), 0xFF), bit.band(bit.rshift(value, 24), 0xFF))
@@ -84,7 +82,6 @@ local be32 = images.be32
 --- Two bytes of a number, most significant first, which is how a netpbm sample
 --- wider than one byte is stored.
 ---@param value number
----@return string
 local function be16(value)
 	return string.char(bit.band(bit.rshift(value, 8), 0xFF), value % 256)
 end
@@ -95,7 +92,6 @@ local CRC_TABLE = nil
 
 --- The CRC a PNG chunk is checked with.
 ---@param data string
----@return number
 local function crc32(data)
 	if CRC_TABLE == nil then
 		CRC_TABLE = {}
@@ -130,7 +126,6 @@ end
 
 --- The checksum a zlib stream ends with.
 ---@param data string
----@return number
 local function adler32(data)
 	local a, b = 1, 0
 
@@ -145,7 +140,6 @@ end
 --- A zlib stream of stored blocks: the one kind of deflate that needs no
 --- compressor, which is why a test can write it out by hand.
 ---@param data string
----@return string
 local function stored(data)
 	local parts = { "\120\1" }
 	local position = 1
@@ -173,7 +167,6 @@ end
 
 ---@param kind string
 ---@param data string
----@return string
 local function chunk(kind, data)
 	return be32(#data) .. kind .. data .. be32(crc32(kind .. data))
 end
@@ -439,7 +432,6 @@ local SCRATCH = nil
 --- The system's own temporary directory when there is a usable one, and the
 --- package's tests directory when there is not — which is what a container that
 --- mounts the checkout has to offer.
----@return string
 local function scratchDirectory()
 	if SCRATCH == nil then
 		for _, candidate in ipairs({ os.getenv("TMPDIR"), os.getenv("TEMP"), "/tmp" }) do

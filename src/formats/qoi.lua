@@ -38,7 +38,6 @@ local OP_RUN = 3
 ---@param g number
 ---@param b number
 ---@param a number
----@return number
 local function hash(r, g, b, a)
 	return (r * 3 + g * 5 + b * 7 + a * 11) % 64
 end

@@ -31,7 +31,7 @@ local pixels = require("image.pixels")
 ---@field fileChannels number? # the channels the file held, when it came from one
 ---@field format image.Format? # what it was decoded from
 ---@field delay number? # milliseconds to show it, for a frame of an animation
----@field pixels ffi.cdata* # uint8_t*, width * height * channels bytes
+---@field pixels ffi.cdata*? # uint8_t*, width * height * channels bytes; nil once closed
 ---@field handle ffi.cdata*? # the native handle the pixels live in, when there is one
 ---@field private owned boolean # whether closing this image is what releases it
 local Image = {}
@@ -45,7 +45,8 @@ Image.__index = Image
 ---@field height number
 ---@field frames image.Image[] # in playback order, each carrying its delay in milliseconds
 ---@field handle ffi.cdata*?
-local Animation
+local Animation = {}
+Animation.__index = Animation
 
 --- An image with a buffer of its own, or one borrowed from a caller who keeps it
 --- alive.
@@ -89,7 +90,6 @@ end
 --- The image a decoded record makes, flipped when the caller asked for that.
 ---@param decoded image.Decoded
 ---@param options image.DecodeOptions?
----@return image.Image
 local function makeImage(decoded, options)
 	local result = Image.fromDecoded(decoded)
 
@@ -245,8 +245,10 @@ end
 function Image:getPixel(x, y)
 	assert(x >= 0 and x < self.width, "X is outside the image")
 	assert(y >= 0 and y < self.height, "Y is outside the image")
+	local buffer = self.pixels
+	if buffer == nil then error("image has no pixels: it was closed", 2) end
 
-	return pixels.read(self.pixels, (y * self.width + x) * self.channels, self.channels)
+	return pixels.read(buffer, (y * self.width + x) * self.channels, self.channels)
 end
 
 --- Writes one pixel, keeping only the channels this image holds.
@@ -259,8 +261,10 @@ end
 function Image:setPixel(x, y, r, g, b, a)
 	assert(x >= 0 and x < self.width, "X is outside the image")
 	assert(y >= 0 and y < self.height, "Y is outside the image")
+	local buffer = self.pixels
+	if buffer == nil then error("image has no pixels: it was closed", 2) end
 
-	pixels.write(self.pixels, (y * self.width + x) * self.channels, self.channels, r, g, b, a or 255)
+	pixels.write(buffer, (y * self.width + x) * self.channels, self.channels, r, g, b, a or 255)
 end
 
 --- Fills the whole image with one colour, as setPixel would store it.
@@ -270,7 +274,9 @@ end
 ---@param a number?
 ---@return image.Image self
 function Image:fill(r, g, b, a)
-	pixels.fill(self.pixels, self.width * self.height, self.channels, r, g, b, a)
+	local buffer = self.pixels
+	if buffer == nil then error("image has no pixels: it was closed", 2) end
+	pixels.fill(buffer, self.width * self.height, self.channels, r, g, b, a)
 
 	return self
 end
@@ -278,7 +284,9 @@ end
 --- Turns the image upside down, in place.
 ---@return image.Image self
 function Image:flip()
-	pixels.flip(self.pixels, self.width, self.height, self.channels)
+	local buffer = self.pixels
+	if buffer == nil then error("image has no pixels: it was closed", 2) end
+	pixels.flip(buffer, self.width, self.height, self.channels)
 
 	return self
 end
@@ -288,9 +296,11 @@ end
 ---@return image.Image
 function Image:convert(channels)
 	assert(channels >= 1 and channels <= 4, "An image holds between 1 and 4 channels")
+	local buffer = self.pixels
+	if buffer == nil then error("image has no pixels: it was closed", 2) end
 
 	return Image.new(self.width, self.height, channels,
-		pixels.convert(self.pixels, self.width * self.height, self.channels, channels))
+		pixels.convert(buffer, self.width * self.height, self.channels, channels))
 end
 
 --- A copy of this image, pixels and all.
@@ -350,7 +360,10 @@ function Image:encode(format, options)
 		return nil, err
 	end
 
-	return Formats.encode(self.pixels, self.width, self.height, self.channels, target, options)
+	local buffer = self.pixels
+	if buffer == nil then return nil, "The image has no pixels: it was closed, or never decoded" end
+
+	return Formats.encode(buffer, self.width, self.height, self.channels, target, options)
 end
 
 --- Encodes the image and writes it to a file, in the format its extension names
@@ -369,7 +382,9 @@ function Image:save(path, options)
 	end
 
 	---@cast target image.Format
-	local encoded, encodeErr = Formats.encode(self.pixels, self.width, self.height, self.channels, target, options)
+	local buffer = self.pixels
+	if buffer == nil then return nil, "The image has no pixels: it was closed, or never decoded" end
+	local encoded, encodeErr = Formats.encode(buffer, self.width, self.height, self.channels, target, options)
 
 	if encoded == nil then
 		return nil, encodeErr
@@ -409,8 +424,6 @@ function Image:close()
 end
 
 --- The images a multi frame file holds, in playback order.
-Animation = {}
-Animation.__index = Animation
 
 ---@param format image.Format?
 ---@param width number

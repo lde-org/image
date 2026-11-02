@@ -12,7 +12,6 @@ local HEIGHT = fixtures.height
 ---@param img image.Image
 ---@param x number
 ---@param y number
----@return string
 local function pixel(img, x, y)
 	local r, g, b, a = img:getPixel(x, y)
 
@@ -24,7 +23,6 @@ end
 ---@param height number
 ---@param channels number
 ---@param ops string
----@return string
 local function qoi(width, height, channels, ops)
 	return "qoif" .. fixtures.be32(width) .. fixtures.be32(height) .. string.char(channels, 0)
 		.. ops .. "\0\0\0\0\0\0\0\1"
@@ -34,7 +32,6 @@ end
 ---@param x number
 ---@param y number
 ---@param channel number
----@return number
 local function sample(x, y, channel)
 	local r, g, b = fixtures.pattern(x, y)
 
@@ -43,7 +40,7 @@ end
 
 test.it("reads a binary netpbm image", function()
 	local ppm = assert(image.decode(fixtures.pnm("P6", WIDTH, HEIGHT, nil, sample)))
-	test.equal(ppm.format.name, "PPM")
+	test.equal(assert(ppm.format).name, "PPM")
 	test.equal(ppm.channels, 3)
 
 	for y = 0, HEIGHT - 1 do
@@ -189,7 +186,7 @@ test.it("reports a netpbm image that does not say enough", function()
 	-- hold is refused before anything is allocated for them.
 	local huge, hugeErr = image.decode("P6\n4000 4000\n255\n\0\0\0")
 	test.falsy(huge)
-	test.includes(hugeErr, "shorter than the header claims")
+	test.includes(hugeErr or "", "shorter than the header claims")
 end)
 
 test.it("reads every op a qoi stream is made of", function()
@@ -243,7 +240,7 @@ end)
 test.it("reports a qoi stream that does not add up", function()
 	local img, err = image.decode("qoif")
 	test.falsy(img)
-	test.includes(err, "too short")
+	test.includes(err or "", "too short")
 
 	local wrongMagic, magicErr = image.decode(string.sub(qoi(1, 1, 4, string.char(0xFF, 1, 2, 3, 4)), 2))
 	test.falsy(wrongMagic)
@@ -251,7 +248,7 @@ test.it("reports a qoi stream that does not add up", function()
 
 	local empty, emptyErr = image.decode(qoi(0, 4, 4, ""))
 	test.falsy(empty)
-	test.includes(emptyErr, "empty")
+	test.includes(emptyErr or "", "empty")
 
 	-- The header claims four pixels and the stream spells out one.
 	local short, shortErr = image.decode(qoi(4, 1, 4, string.char(0xFF, 1, 2, 3, 4)))
@@ -260,7 +257,7 @@ test.it("reports a qoi stream that does not add up", function()
 
 	local tooMany, manyErr = image.decode(qoi(64, 64, 4, string.char(0xC0)))
 	test.falsy(tooMany)
-	test.includes(manyErr, "more pixels")
+	test.includes(manyErr or "", "more pixels")
 end)
 
 test.it("writes a qoi stream it can read back", function()
@@ -286,7 +283,6 @@ test.it("writes a run op for every sixty-two pixels that repeat", function()
 	local header = "qoif" .. fixtures.be32(0) .. fixtures.be32(0) .. "\4\0"
 
 	---@param count number
-	---@return string
 	local function expected(count)
 		local ops = string.char(0xFF, 7, 200, 9, 10)
 
@@ -321,7 +317,7 @@ test.it("refuses to write the channel counts qoi cannot describe", function()
 	local encoded, err = grey:encode("qoi")
 
 	test.falsy(encoded)
-	test.includes(err, "A QOI holds 3 or 4 channel pixels")
+	test.includes(err or "", "A QOI holds 3 or 4 channel pixels")
 
 	-- Widened, it is a stream like any other.
 	local widened = assert(grey:convert(3):encode("qoi"))
@@ -354,7 +350,7 @@ test.it("writes a netpbm image it can read back", function()
 	test.equal(string.sub(ppm, 4, 10), "4 4\n255")
 
 	local back = assert(image.decode(ppm))
-	test.equal(back.format.name, "PPM")
+	test.equal(assert(back.format).name, "PPM")
 
 	for y = 0, HEIGHT - 1 do
 		for x = 0, WIDTH - 1 do

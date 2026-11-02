@@ -3,5 +3,13 @@
 	"description": "Image encoding, decoding and manipulation library",
 	"authors": ["David Cruz <david@bycruz.dev>"],
 	"version": "0.1.3",
-	"dependencies": {}
+	"dependencies": {},
+	"devDependencies": {
+		"lde-test": {
+			"git": "https://github.com/lde-org/lde"
+		},
+		"lde-build": {
+			"git": "https://github.com/lde-org/lde"
+		}
+	}
 }

@@ -25,7 +25,6 @@ Ppm.formats = {
 --- The whitespace a header may separate its tokens with, which includes the
 --- vertical tab and form feed the spec allows.
 ---@param byte number?
----@return boolean
 local function isSpace(byte)
 	return byte == 32 or (byte ~= nil and byte >= 9 and byte <= 13)
 end
@@ -76,13 +75,12 @@ local function readHeader(data)
 
 	-- "P" and a digit from one to six is the whole of a netpbm magic, which is two
 	-- bytes of comparison rather than a pattern.
-	local valid = magic ~= nil and #magic == 2
-
-	if valid then
-		local first, kind = string.byte(magic, 1, 2)
-
-		valid = first == 0x50 and kind ~= nil and kind >= 0x31 and kind <= 0x36
+	if magic == nil or #magic ~= 2 then
+		return nil, "Not a netpbm image: the header does not start with P1 to P6"
 	end
+
+	local first, kind = string.byte(magic, 1, 2)
+	local valid = first == 0x50 and kind ~= nil and kind >= 0x31 and kind <= 0x36
 
 	if not valid then
 		return nil, "Not a netpbm image: the header does not start with P1 to P6"
@@ -92,11 +90,13 @@ local function readHeader(data)
 	width, position = token(data, position)
 	height, position = token(data, position)
 
-	width, height = tonumber(width or ""), tonumber(height or "")
+	local parsedWidth, parsedHeight = tonumber(width or ""), tonumber(height or "")
 
-	if width == nil or height == nil or width < 1 or height < 1 then
+	if parsedWidth == nil or parsedHeight == nil or parsedWidth < 1 or parsedHeight < 1 then
 		return nil, "Damaged netpbm data: the header does not state a size"
 	end
+
+	width, height = parsedWidth, parsedHeight
 
 	-- The bilevel pair has no maximum value of its own.
 	local maxval = 1
@@ -134,7 +134,6 @@ end
 --- rather than a wrapped one.
 ---@param value number
 ---@param maxval number
----@return number
 local function scale(value, maxval)
 	if value >= maxval then
 		return 255

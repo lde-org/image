@@ -9,7 +9,6 @@ local HEIGHT = fixtures.height
 ---@param img image.Image
 ---@param x number
 ---@param y number
----@return string
 local function pixel(img, x, y)
 	local r, g, b, a = img:getPixel(x, y)
 
@@ -50,7 +49,6 @@ end
 ---@param a number
 ---@param b number
 ---@param tolerance number?
----@return boolean
 local function near(a, b, tolerance)
 	return math.abs(a - b) <= (tolerance or 4)
 end
@@ -106,7 +104,7 @@ end)
 test.it("decodes a jpeg, near enough for a lossy one", function()
 	local photo = assert(image.decode(fixtures.fixture("photo.jpg")))
 
-	test.equal(photo.format.name, "JPEG")
+	test.equal(assert(photo.format).name, "JPEG")
 	test.equal(photo.width, 64)
 	test.equal(photo.height, 64)
 	test.equal(photo.channels, 3)
@@ -198,23 +196,23 @@ end)
 test.it("probes a file without decoding its pixels", function()
 	local info = assert(image.probe(fixtures.png(WIDTH, HEIGHT, 4, fixtures.pattern)))
 
-	test.equal(info.format.name, "PNG")
+	test.equal(assert(info.format).name, "PNG")
 	test.equal(info.width, WIDTH)
 	test.equal(info.height, HEIGHT)
 	test.equal(info.channels, 4)
 	test.equal(info.bits, 8)
 
 	local qoi = assert(image.probe(fixtures.qoi(WIDTH, HEIGHT, 3, fixtures.pattern)))
-	test.equal(qoi.format.name, "QOI")
+	test.equal(assert(qoi.format).name, "QOI")
 	test.equal(qoi.channels, 3)
 
 	local ppm = assert(image.probe(fixtures.pnm("P6", WIDTH, HEIGHT, nil, function()
 		return 0
 	end)))
-	test.equal(ppm.format.name, "PPM")
+	test.equal(assert(ppm.format).name, "PPM")
 
 	local photo = assert(image.probe(fixtures.fixture("photo.jpg")))
-	test.equal(photo.format.name, "JPEG")
+	test.equal(assert(photo.format).name, "JPEG")
 	test.equal(photo.width, 64)
 	test.equal(photo.channels, 3)
 
@@ -230,7 +228,7 @@ test.it("probes a format that has no signature, when the path says which it is",
 	test.equal(unnamed.format, nil, "the bytes alone cannot say which format this is")
 
 	local info = assert(image.probe(tga, "picture.tga"))
-	test.equal(info.format.name, "TGA")
+	test.equal(assert(info.format).name, "TGA")
 	test.equal(info.width, WIDTH)
 	test.equal(info.channels, 4)
 end)
@@ -259,11 +257,11 @@ test.it("names the format of a file it read, even without a signature", function
 	fixtures.write(path, fixtures.tga(WIDTH, HEIGHT, 4, fixtures.pattern))
 
 	local loaded = assert(image.load(path))
-	test.equal(loaded.format.name, "TGA")
+	test.equal(assert(loaded.format).name, "TGA")
 
 	local animation = assert(image.loadFrames(path))
 	test.equal(#animation.frames, 1)
-	test.equal(animation.format.name, "TGA", "the frames are of the file's format too")
+	test.equal(assert(animation.format).name, "TGA", "the frames are of the file's format too")
 	test.equal(pixel(animation.frames[1], 0, 0), "255,0,0,255")
 
 	os.remove(path)
@@ -343,13 +341,13 @@ test.it("reports a file it cannot read", function()
 	local img, err = image.load(path)
 	test.falsy(img)
 	test.truthy(err)
-	test.includes(err, "unknown image type", "the decoder says why")
+	test.includes(err or "", "unknown image type", "the decoder says why")
 
 	os.remove(path)
 
 	local missing, missingErr = image.load("tests/fixtures/does-not-exist.png")
 	test.falsy(missing)
-	test.includes(missingErr, "Failed to open")
+	test.includes(missingErr or "", "Failed to open")
 
 	local truncated, truncatedErr = image.decode(string.sub(fixtures.png(WIDTH, HEIGHT, 4, fixtures.pattern), 1, 40))
 	test.falsy(truncated)
@@ -361,21 +359,21 @@ test.it("refuses what it cannot write", function()
 
 	local encoded, err = img:encode("webp")
 	test.falsy(encoded)
-	test.includes(err, "Unknown image format")
+	test.includes(err or "", "Unknown image format")
 
 	local path = fixtures.temp("thing.wibble")
 	local saved, saveErr = img:save(path)
 	test.falsy(saved)
-	test.includes(saveErr, "Unknown image format")
+	test.includes(saveErr or "", "Unknown image format")
 
 	local gif, gifErr = img:encode("gif")
 	test.falsy(gif)
-	test.includes(gifErr, "cannot be written")
+	test.includes(gifErr or "", "cannot be written")
 
 	local grey = image.new(WIDTH, HEIGHT, 1)
 	local bmp, bmpErr = grey:encode("bmp")
 	test.falsy(bmp)
-	test.includes(bmpErr, "channel")
+	test.includes(bmpErr or "", "channel")
 end)
 
 test.it("releases the pixels of an image it decoded, and empties it", function()
